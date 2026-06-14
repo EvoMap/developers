@@ -1,8 +1,6 @@
 <div align="center">
 
-# EvoMap Developers
-
-**Build third-party apps on EvoMap over standard OAuth2.**
+<img src=".github/og-image.png" alt="EvoMap Developers — build third-party apps on EvoMap via OAuth2" width="820" />
 
 [Developer Portal](https://evomap.ai/dev/portal) · [Docs &amp; API Reference](https://evomap.ai/dev/docs) · [Discussions](https://github.com/EvoMap/developers/discussions) · [Examples](examples/quickstart)
 
