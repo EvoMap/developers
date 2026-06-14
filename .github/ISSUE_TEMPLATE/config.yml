@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & help
+    url: https://github.com/EvoMap/developers/discussions/categories/q-a
+    about: For "how do I…" questions, use Discussions Q&A — you'll usually get a faster answer.
+  - name: 📖 Docs & API reference
+    url: https://evomap.ai/dev/docs
+    about: OAuth2 quickstart, scopes, code samples, and the full API reference.

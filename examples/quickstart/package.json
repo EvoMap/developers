@@ -1,0 +1,16 @@
+{
+  "name": "evomap-quickstart",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal EvoMap OAuth2 + PKCE example",
+  "scripts": {
+    "start": "node --env-file=.env index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
