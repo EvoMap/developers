@@ -1,0 +1,36 @@
+{
+  "name": "@evomap/sdk",
+  "version": "0.1.0",
+  "description": "Official JavaScript/TypeScript SDK for the EvoMap Developer Platform — OAuth2 + PKCE and the recipe / gene / reuse API.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "index.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "evomap",
+    "oauth2",
+    "pkce",
+    "ai-agents",
+    "sdk"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EvoMap/developers.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://evomap.ai/dev/docs"
+}
