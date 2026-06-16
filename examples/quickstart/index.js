@@ -1,86 +1,95 @@
-// Minimal EvoMap OAuth2 + PKCE example (Express, Node 18+).
+// EvoMap quickstart — the full developer loop with the official @evomap/sdk:
+// OAuth 2.0 + PKCE, calling the API, and verifying webhooks. (Express, Node 18+.)
 //
 //   1. npm install
 //   2. cp .env.example .env  and fill in CLIENT_ID / CLIENT_SECRET from the portal
-//      (set your app's redirect URI to http://localhost:3000/callback)
+//      (register an app with redirect URI http://localhost:3000/callback).
+//      Tip: register a `test_mode` app to get a `evm_client_test_…` id and run the
+//      whole loop — including publishing — with zero real-world effects.
 //   3. npm start  →  open http://localhost:3000  →  "Connect with EvoMap"
 //
-// This is a teaching example: the PKCE verifier is kept in memory keyed by state.
-// In production, store it in the user's session and validate state strictly.
+// Teaching example: the PKCE verifier is kept in memory keyed by state. In
+// production, stash it in the user's session and validate state strictly.
 
 import express from "express";
-import crypto from "node:crypto";
+import { OAuthClient, EvoMap, EvoMapError, constructWebhookEvent, WebhookSignatureError } from "@evomap/sdk";
 
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const BASE = process.env.EVOMAP_BASE || "https://evomap.ai";
 const REDIRECT_URI = "http://localhost:3000/callback";
-const SCOPE = "recipe:read";
+const SCOPE = ["recipe:read"]; // add recipe:write / recipe:publish to create/publish
 
-if (!CLIENT_ID || !CLIENT_SECRET) {
-  console.error("Set CLIENT_ID and CLIENT_SECRET (see .env.example).");
+const oauth = new OAuthClient({
+  clientId: process.env.CLIENT_ID,
+  clientSecret: process.env.CLIENT_SECRET, // omit for public/PKCE-only clients
+  redirectUri: REDIRECT_URI,
+  baseUrl: BASE,
+});
+if (!process.env.CLIENT_ID) {
+  console.error("Set CLIENT_ID (and CLIENT_SECRET for confidential clients) — see .env.example.");
   process.exit(1);
 }
+console.log(`Mode: ${oauth.livemode ? "LIVE" : "TEST (sandbox — no real-world effects)"}`);
 
 const app = express();
-const pending = new Map(); // state -> code_verifier (demo only)
-const b64url = (buf) => buf.toString("base64url");
+const pending = new Map(); // state -> codeVerifier (demo only)
 
 app.get("/", (_req, res) => {
   res.type("html").send('<h1>EvoMap quickstart</h1><a href="/login">Connect with EvoMap →</a>');
 });
 
+// 1. Send the user to consent. Stash the PKCE verifier keyed by state.
 app.get("/login", (_req, res) => {
-  const verifier = b64url(crypto.randomBytes(32));
-  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
-  const state = b64url(crypto.randomBytes(16));
-  pending.set(state, verifier);
-  const url =
-    `${BASE}/oauth/authorize?` +
-    new URLSearchParams({
-      response_type: "code",
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      scope: SCOPE,
-      code_challenge: challenge,
-      code_challenge_method: "S256",
-      state,
-    });
+  const { url, codeVerifier, state } = oauth.authorizationUrl({ scope: SCOPE });
+  pending.set(state, codeVerifier);
   res.redirect(url);
 });
 
+// 2. Exchange the code, then 3. call the API on the user's behalf.
 app.get("/callback", async (req, res) => {
   const { code, state } = req.query;
-  const verifier = pending.get(state);
-  if (!code || !verifier) return res.status(400).send("Missing code or unknown state.");
+  const codeVerifier = pending.get(state);
+  if (!code || !codeVerifier) return res.status(400).send("Missing code or unknown state.");
   pending.delete(state);
 
-  // Exchange the authorization code for tokens.
-  const tokenRes = await fetch(`${BASE}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code: String(code),
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier,
-    }),
-  });
-  const tokens = await tokenRes.json();
-  if (!tokens.access_token) return res.status(400).json(tokens);
+  try {
+    const tokens = await oauth.exchangeCode({ code: String(code), codeVerifier });
+    const evomap = new EvoMap({ accessToken: tokens.accessToken, baseUrl: BASE });
 
-  // Call the API on the user's behalf.
-  const apiRes = await fetch(`${BASE}/developer/oauth/recipes`, {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  });
-  const recipes = await apiRes.json();
+    // List the promoted recipe catalog (keyset-paginated — the SDK can auto-page).
+    const { recipes, pagination } = await evomap.recipes.list({ limit: 5 });
 
-  res.json({
-    tokens: { ...tokens, access_token: "***", refresh_token: tokens.refresh_token ? "***" : undefined },
-    recipes,
-  });
+    res.json({
+      livemode: oauth.livemode,
+      scope: tokens.scope,
+      recipes,
+      pagination,
+      // To publish (needs recipe:publish scope), idempotency-keyed for safe retries:
+      //   await evomap.recipes.publish({ title, steps }, { idempotencyKey: "..." });
+    });
+  } catch (err) {
+    if (err instanceof EvoMapError) {
+      return res.status(err.status).json({ error: err.code, type: err.type, request_id: err.requestId });
+    }
+    throw err;
+  }
+});
+
+// 4. Receive webhooks. Register the endpoint via the portal/API and copy the
+//    whsec_… into EVOMAP_WEBHOOK_SECRET. ALWAYS verify with the raw body.
+app.post("/webhooks/evomap", express.raw({ type: "application/json" }), (req, res) => {
+  let event;
+  try {
+    event = constructWebhookEvent(
+      req.body, // Buffer — the exact raw bytes
+      req.get("X-EvoMap-Webhook-Signature"),
+      process.env.EVOMAP_WEBHOOK_SECRET,
+    );
+  } catch (err) {
+    if (err instanceof WebhookSignatureError) return res.status(400).send(err.reason);
+    throw err;
+  }
+  console.log(`webhook: ${event.type} (livemode=${event.livemode})`, event.data);
+  res.sendStatus(200);
 });
 
 app.listen(3000, () => console.log("Listening on http://localhost:3000"));
