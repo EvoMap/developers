@@ -38,6 +38,16 @@ export class OAuthClient {
   }
 
   /**
+   * Whether this client operates in live mode. Test vs live is welded to the
+   * credential: a `evm_client_test_…` client id is test mode (its publishes hit
+   * an isolated ephemeral sandbox, never the real value pool).
+   * @returns {boolean}
+   */
+  get livemode() {
+    return !String(this.clientId).startsWith("evm_client_test_");
+  }
+
+  /**
    * Build the URL to send the user to, plus the PKCE `codeVerifier` and `state`
    * you must stash (keyed by `state`) until the callback.
    * @param {{ scope: string|string[], state?: string }} opts

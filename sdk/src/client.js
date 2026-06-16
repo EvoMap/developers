@@ -15,11 +15,14 @@ function query(params) {
 
 /**
  * Client for the EvoMap data + publish API. Authenticates with a bearer access
- * token obtained via {@link OAuthClient}.
+ * token obtained via {@link OAuthClient}. Test vs live is determined by the
+ * credential the token was minted from (a `evm_client_test_…` client) — the
+ * client code is identical; responses carry `livemode`.
  *
  * @example
  *   const evomap = new EvoMap({ accessToken });
- *   const { recipes } = await evomap.recipes.list({ q: "deploy", limit: 10 });
+ *   const { recipes, pagination } = await evomap.recipes.list({ q: "deploy", limit: 10 });
+ *   for await (const r of evomap.recipes.listAll({ limit: 50 })) { ... } // auto-paginates
  */
 export class EvoMap {
   /**
@@ -31,12 +34,14 @@ export class EvoMap {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
 
     this.recipes = {
-      /** Promoted recipe catalog. Scope `recipe:read`. */
+      /** Promoted recipe catalog (one page). Scope `recipe:read`. Pass `cursor` to page; the response carries `pagination`. */
       list: (params) => this.#request("GET", `/developer/oauth/recipes?${query(params)}`),
-      /** Create a recipe draft (stays unpublished). Scope `recipe:write`. */
-      create: (recipe) => this.#request("POST", "/developer/oauth/recipe", recipe),
-      /** Create and publish a recipe to the value pool. Scope `recipe:publish`. */
-      publish: (recipe) => this.#request("POST", "/developer/oauth/recipe/publish", recipe),
+      /** Auto-paginating async iterator over the promoted catalog (follows pagination.next_cursor). */
+      listAll: (params) => this.#paginate("/developer/oauth/recipes", params, "recipes"),
+      /** Create a recipe draft (stays unpublished). Scope `recipe:write`. Pass `{ idempotencyKey }` for safe retries. */
+      create: (recipe, opts) => this.#request("POST", "/developer/oauth/recipe", recipe, opts),
+      /** Create and publish a recipe to the value pool. Scope `recipe:publish`. Pass `{ idempotencyKey }` for safe retries. */
+      publish: (recipe, opts) => this.#request("POST", "/developer/oauth/recipe/publish", recipe, opts),
     };
     this.genes = {
       /** Ranked public asset (gene) catalog. Scope `gene:read`. */
@@ -48,8 +53,23 @@ export class EvoMap {
     };
   }
 
-  async #request(method, path, body) {
+  /** Async generator: page a keyset-cursor list endpoint until exhausted. */
+  async *#paginate(path, params, key) {
+    let cursor;
+    for (;;) {
+      const page = await this.#request("GET", `${path}?${query({ ...params, cursor })}`);
+      for (const item of page[key] || []) yield item;
+      const next = page.pagination?.next_cursor;
+      if (!next || page.pagination?.has_more === false) return;
+      cursor = next;
+    }
+  }
+
+  async #request(method, path, body, opts = {}) {
     const headers = { Authorization: `Bearer ${this.accessToken}` };
+    // Opt-in idempotency: an identical retry with the same key replays the
+    // original result instead of creating a duplicate (POST publish endpoints).
+    if (opts.idempotencyKey) headers["Idempotency-Key"] = String(opts.idempotencyKey);
     const init = { method, headers };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -58,7 +78,7 @@ export class EvoMap {
     const res = await fetch(`${this.baseUrl}${path}`, init);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new EvoMapError(res.status, json.error || "request_failed", json.error_description, res.headers);
+      throw new EvoMapError(res.status, json, res.headers);
     }
     return json;
   }
