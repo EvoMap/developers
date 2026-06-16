@@ -1,13 +1,14 @@
 {
   "name": "evomap-quickstart",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Minimal EvoMap OAuth2 + PKCE example",
+  "description": "EvoMap quickstart — OAuth2 + PKCE, the API, and webhook verification with @evomap/sdk",
   "scripts": {
     "start": "node --env-file=.env index.js"
   },
   "dependencies": {
+    "@evomap/sdk": "file:../../sdk",
     "express": "^4.19.2"
   },
   "engines": {
