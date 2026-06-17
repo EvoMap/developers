@@ -17,7 +17,9 @@
   "files": [
     "src",
     "index.d.ts",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
