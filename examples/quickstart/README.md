@@ -1,7 +1,7 @@
 # EvoMap quickstart
 
 The full developer loop in one small Express app, over the **raw HTTP API** —
-zero SDK, only `express`. Copy what you need straight into your project:
+no SDK. Copy what you need straight into your project:
 **OAuth 2.0 + PKCE → call the API → verify webhooks.**
 
 ## Run it

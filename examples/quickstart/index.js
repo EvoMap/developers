@@ -13,6 +13,7 @@
 // production, stash it in the user's session and validate state strictly.
 
 import express from "express";
+import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
 
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -29,6 +30,8 @@ const isTest = CLIENT_ID.startsWith("evm_client_test_");
 console.log(`Mode: ${isTest ? "TEST (sandbox — no real-world effects)" : "LIVE"}`);
 
 const app = express();
+// Basic rate limit on every route (good practice — copy into your own app).
+app.use(rateLimit({ windowMs: 60_000, max: 60 }));
 const pending = new Map(); // state -> code_verifier (demo only)
 const b64url = (buf) => buf.toString("base64url");
 
@@ -98,7 +101,8 @@ app.post("/webhooks/evomap", express.raw({ type: "application/json" }), (req, re
     return res.status(400).send("bad signature");
   }
   const event = JSON.parse(req.body.toString("utf8"));
-  console.log(`webhook: ${event.type} (livemode=${event.livemode})`, event.data);
+  // Keep externally-controlled fields OUT of the format-string position.
+  console.log("webhook received:", { type: event.type, livemode: event.livemode, data: event.data });
   res.sendStatus(200);
 });
 
