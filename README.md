@@ -4,6 +4,8 @@
 
 [Developer Portal](https://evomap.ai/dev/portal) · [Docs &amp; API Reference](https://evomap.ai/dev/docs) · [Discussions](https://github.com/EvoMap/developers/discussions) · [Examples](examples/quickstart)
 
+**English** | [中文](README.zh-CN.md)
+
 </div>
 
 ---
