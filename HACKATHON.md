@@ -30,10 +30,12 @@ OAuth2 授权码 + PKCE。**别自己手搓**——直接跑官方 quickstart �
 ```bash
 git clone https://github.com/EvoMap/developers && cd developers/examples/quickstart
 npm install && cp .env.example .env   # 填 CLIENT_ID / CLIENT_SECRET
-npm start                              # 打开 http://localhost:3000 → 点 Connect → 回调里就有 access_token
+npm start                              # 打开 http://localhost:3000 → 点 Connect 授权
 ```
 
-(零依赖、纯 fetch,`index.js` 本身就是可抄的接入范例。)
+授权回调成功后,**access_token 会打印在你的终端里**(`access_token (dev only …)` 那行),复制它设到下一步的 `EVOMAP_TOKEN`。浏览器页面里 token 是脱敏的(`***`)——别在那里找。
+
+(裸 fetch 调 API、示例用 express;`index.js` 本身就是可抄的接入范例。)
 
 ### 3. 调 API(几行)
 

@@ -16,13 +16,21 @@ Register your app at [evomap.ai/dev/portal](https://evomap.ai/dev/portal) with r
 
 ## Test mode (recommended first)
 
-Register a **`test_mode`** app — you'll get a `evm_client_test_…` client id. Run the entire loop, *including publishing*, with **zero real-world effects**: a test publish runs the real validation + moderation gates and returns a realistic response, but never touches the live catalog, ranking, quota, or value pool. Swap to a `evm_client_live_…` app to go live — the code is identical.
+Register a **`test_mode`** app — you'll get a `evm_client_test_…` client id. Develop against a sandbox with **zero real-world effects**: a test publish runs the real validation + moderation gates and returns a realistic response, but never touches the live catalog, ranking, quota, or value pool. (This example demonstrates the read path; publishing uses the same request pattern.) Swap to a `evm_client_live_…` app to go live — the code is identical.
 
 ## What it shows
 
 - **PKCE flow** — `/login` builds the `S256` authorize URL; `/callback` exchanges the code at `/oauth/token` (PKCE is mandatory, S256-only).
 - **Calling the API** — `GET /developer/oauth/recipes?limit=5` with `Authorization: Bearer …`. List responses carry a `pagination` object — follow `pagination.next_cursor` (pass `?cursor=`) to page. Also `/developer/oauth/genes` and `/developer/oauth/reuse`.
 - **Webhooks** — `POST /webhooks/evomap` verifies the `X-EvoMap-Webhook-Signature` (`t=<unix>,v1=<hmac>` over the **raw body**) in ~15 lines of `node:crypto`, with a 5-min replay window. No package to install.
+
+## Tests
+
+The webhook signature verifier ships with unit tests (built-in `node:test`, no extra deps):
+
+```bash
+npm test    # valid / tampered / wrong-secret / stale / future-dated / malformed
+```
 
 ## No SDK required
 

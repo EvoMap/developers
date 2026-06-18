@@ -1,6 +1,7 @@
-// EvoMap quickstart — the full developer loop over the raw HTTP API, zero SDK,
-// only express: OAuth 2.0 + PKCE, calling the API, and verifying a webhook.
-// Copy what you need straight into your app.
+// EvoMap quickstart — the full developer loop over the raw HTTP API (no SDK):
+// OAuth 2.0 + PKCE, calling the API, and verifying a webhook. The API calls are
+// plain `fetch`; the only deps are express + express-rate-limit (this is a tiny
+// web server). Copy what you need straight into your app.
 //
 // Needs Node 20.6+ (the `npm start` script uses `node --env-file`). The code
 // itself runs on Node 18+ if you load env another way.
@@ -8,8 +9,10 @@
 //   1. npm install
 //   2. cp .env.example .env  and fill in CLIENT_ID / CLIENT_SECRET from the portal
 //      (register an app with redirect URI http://localhost:3000/callback).
-//      Tip: register a `test_mode` app to get a `evm_client_test_…` id and run the
-//      whole loop — including publishing — with zero real-world effects.
+//      Tip: a `test_mode` app (`evm_client_test_…` id) lets you develop against a
+//      sandbox with zero real-world effects — test publishes run the real
+//      validation/moderation gates but never touch the live catalog. This example
+//      demonstrates the read path; publishing uses the same request pattern.
 //   3. npm start  →  open http://localhost:3000  →  "Connect with EvoMap"
 //
 // Teaching example: the PKCE verifier is kept in memory keyed by state. In
@@ -23,14 +26,14 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET; // omit for public/PKCE-only clients
 const BASE = process.env.EVOMAP_BASE || "https://evomap.ai";
 const REDIRECT_URI = "http://localhost:3000/callback";
-const SCOPE = "recipe:read"; // space-separate more, e.g. "recipe:read recipe:write"
+// The three self-serve read scopes (all auto-approved). Add more as needed, e.g.
+// "recipe:write" (auto-approved) or "recipe:publish" (granted on request).
+const SCOPE = "recipe:read gene:read reuse:query";
+const FETCH_TIMEOUT_MS = 10_000;
 
-if (!CLIENT_ID) {
-  console.error("Set CLIENT_ID (and CLIENT_SECRET for confidential clients) — see .env.example.");
-  process.exit(1);
-}
-const isTest = CLIENT_ID.startsWith("evm_client_test_");
-console.log(`Mode: ${isTest ? "TEST (sandbox — no real-world effects)" : "LIVE"}`);
+// Run the server only when executed directly (npm start), not when imported by a
+// test — so the webhook verifier below can be unit-tested without booting it.
+const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 const app = express();
 // Basic rate limit on every route (good practice — copy into your own app).
@@ -73,6 +76,7 @@ app.get("/callback", async (req, res, next) => {
     pending.delete(state);
 
     // 2. Exchange the code for tokens (urlencoded body, per OAuth2).
+    //    AbortSignal.timeout caps the wait so a hung upstream can't pin the request.
     const tokenRes = await fetch(`${BASE}/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -84,6 +88,7 @@ app.get("/callback", async (req, res, next) => {
         redirect_uri: REDIRECT_URI,
         code_verifier: verifier,
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     // Upstream proxies/CDNs can return non-JSON (e.g. an HTML 502) — parse defensively.
     const tokens = await tokenRes.json().catch(() => null);
@@ -91,10 +96,16 @@ app.get("/callback", async (req, res, next) => {
       return res.status(tokenRes.ok ? 502 : tokenRes.status).json({ error: "token_exchange_failed", upstream: tokens });
     }
 
+    // Dev convenience (terminal only — never shown in the browser): print the token
+    // so you can paste it into EVOMAP_TOKEN for a CLI/curl demo. Don't log tokens in
+    // production — treat them like passwords.
+    console.log("access_token (dev only — paste into EVOMAP_TOKEN):", tokens.access_token);
+
     // 3. Call the API on the user's behalf. Lists carry a `pagination` object —
     //    follow pagination.next_cursor (pass ?cursor=) to page.
     const apiRes = await fetch(`${BASE}/developer/oauth/recipes?limit=5`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const recipes = await apiRes.json().catch(() => null);
     if (!apiRes.ok) {
@@ -149,4 +160,14 @@ app.use((err, _req, res, _next) => {
   if (!res.headersSent) res.status(500).json({ error: "internal_error" });
 });
 
-app.listen(3000, () => console.log("Listening on http://localhost:3000"));
+if (isMain) {
+  if (!CLIENT_ID) {
+    console.error("Set CLIENT_ID (and CLIENT_SECRET for confidential clients) — see .env.example.");
+    process.exit(1);
+  }
+  const isTest = CLIENT_ID.startsWith("evm_client_test_");
+  console.log(`Mode: ${isTest ? "TEST (sandbox — no real-world effects)" : "LIVE"}`);
+  app.listen(3000, () => console.log("Listening on http://localhost:3000"));
+}
+
+export { verifyWebhook };
