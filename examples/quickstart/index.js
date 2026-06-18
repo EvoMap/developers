@@ -1,6 +1,9 @@
 // EvoMap quickstart — the full developer loop over the raw HTTP API, zero SDK,
-// zero deps beyond express: OAuth 2.0 + PKCE, calling the API, and verifying a
-// webhook. Copy what you need straight into your app.
+// only express: OAuth 2.0 + PKCE, calling the API, and verifying a webhook.
+// Copy what you need straight into your app.
+//
+// Needs Node 20.6+ (the `npm start` script uses `node --env-file`). The code
+// itself runs on Node 18+ if you load env another way.
 //
 //   1. npm install
 //   2. cp .env.example .env  and fill in CLIENT_ID / CLIENT_SECRET from the portal
@@ -59,39 +62,53 @@ app.get("/login", (_req, res) => {
   res.redirect(url);
 });
 
-app.get("/callback", async (req, res) => {
-  const { code, state } = req.query;
-  const verifier = pending.get(state);
-  if (!code || !verifier) return res.status(400).send("Missing code or unknown state.");
-  pending.delete(state);
+// Async handler: wrap in try/catch + next(err) — Express 4 does NOT catch a
+// rejected promise, so an upstream HTML/5xx (which makes .json() throw) would
+// otherwise take the whole process down.
+app.get("/callback", async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    const verifier = pending.get(state);
+    if (!code || !verifier) return res.status(400).send("Missing code or unknown state.");
+    pending.delete(state);
 
-  // 2. Exchange the code for tokens (urlencoded body, per OAuth2).
-  const tokenRes = await fetch(`${BASE}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code: String(code),
-      client_id: CLIENT_ID,
-      ...(CLIENT_SECRET ? { client_secret: CLIENT_SECRET } : {}),
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier,
-    }),
-  });
-  const tokens = await tokenRes.json();
-  if (!tokens.access_token) return res.status(400).json(tokens);
+    // 2. Exchange the code for tokens (urlencoded body, per OAuth2).
+    const tokenRes = await fetch(`${BASE}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: String(code),
+        client_id: CLIENT_ID,
+        ...(CLIENT_SECRET ? { client_secret: CLIENT_SECRET } : {}),
+        redirect_uri: REDIRECT_URI,
+        code_verifier: verifier,
+      }),
+    });
+    // Upstream proxies/CDNs can return non-JSON (e.g. an HTML 502) — parse defensively.
+    const tokens = await tokenRes.json().catch(() => null);
+    if (!tokenRes.ok || !tokens?.access_token) {
+      return res.status(tokenRes.ok ? 502 : tokenRes.status).json({ error: "token_exchange_failed", upstream: tokens });
+    }
 
-  // 3. Call the API on the user's behalf. Lists carry a `pagination` object —
-  //    follow pagination.next_cursor (pass ?cursor=) to page.
-  const apiRes = await fetch(`${BASE}/developer/oauth/recipes?limit=5`, {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  });
-  const recipes = await apiRes.json();
+    // 3. Call the API on the user's behalf. Lists carry a `pagination` object —
+    //    follow pagination.next_cursor (pass ?cursor=) to page.
+    const apiRes = await fetch(`${BASE}/developer/oauth/recipes?limit=5`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const recipes = await apiRes.json().catch(() => null);
+    if (!apiRes.ok) {
+      // Propagate the upstream failure as a real error status, don't pass a 500 off as 200.
+      return res.status(apiRes.status).json({ error: "evomap_api_error", upstream: recipes });
+    }
 
-  res.json({
-    tokens: { ...tokens, access_token: "***", refresh_token: tokens.refresh_token ? "***" : undefined },
-    recipes,
-  });
+    res.json({
+      tokens: { ...tokens, access_token: "***", refresh_token: tokens.refresh_token ? "***" : undefined },
+      recipes,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // 4. Receive webhooks. Register the endpoint via the portal/API, copy the whsec_…
@@ -107,8 +124,8 @@ app.post("/webhooks/evomap", express.raw({ type: "application/json" }), (req, re
 });
 
 // Verify the `t=<unix>,v1=<hmac>` signature: HMAC-SHA256 over `${t}.${rawBody}`,
-// constant-time compared, rejecting events older than 5 min (replay guard).
-// ~15 lines — no SDK needed.
+// constant-time compared, rejecting timestamps more than 5 min off — stale OR
+// future-dated (replay guard). ~15 lines — no SDK needed.
 function verifyWebhook(rawBody, header, secret, toleranceSec = 300) {
   if (!secret || !header) return false;
   const parts = Object.fromEntries(String(header).split(",").map((p) => {
@@ -121,7 +138,15 @@ function verifyWebhook(rawBody, header, secret, toleranceSec = 300) {
   const a = Buffer.from(parts.v1, "hex");
   const b = Buffer.from(expected, "hex");
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
-  return Math.floor(Date.now() / 1000) - Number(parts.t) <= toleranceSec;
+  const skew = Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t)); // absolute: reject stale + future
+  return Number.isFinite(skew) && skew <= toleranceSec;
 }
+
+// Catch-all error handler — an upstream hiccup returns a clean 500 instead of
+// crashing the process.
+app.use((err, _req, res, _next) => {
+  console.error("unhandled error:", err?.message || err);
+  if (!res.headersSent) res.status(500).json({ error: "internal_error" });
+});
 
 app.listen(3000, () => console.log("Listening on http://localhost:3000"));

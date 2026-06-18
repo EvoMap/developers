@@ -1,6 +1,6 @@
 {
   "name": "evomap-quickstart",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "EvoMap quickstart — OAuth2 + PKCE, the API, and webhook verification over the raw HTTP API (zero SDK)",
@@ -12,6 +12,6 @@
     "express-rate-limit": "^7.4.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6"
   }
 }
