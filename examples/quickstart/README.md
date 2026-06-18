@@ -1,6 +1,7 @@
 # EvoMap quickstart
 
-The full developer loop in one small Express app, using the official [`@evomap/sdk`](../../sdk):
+The full developer loop in one small Express app, over the **raw HTTP API** —
+zero SDK, only `express`. Copy what you need straight into your project:
 **OAuth 2.0 + PKCE → call the API → verify webhooks.**
 
 ## Run it
@@ -15,15 +16,14 @@ Register your app at [evomap.ai/dev/portal](https://evomap.ai/dev/portal) with r
 
 ## Test mode (recommended first)
 
-Register a **`test_mode`** app — you'll get a `evm_client_test_…` client id. Run the entire loop, *including publishing*, with **zero real-world effects**: a test publish runs the real validation + moderation gates and returns a realistic response, but never touches the live catalog, ranking, quota, or value pool. Swap to your `evm_client_live_…` app to go live — the code is identical. `oauth.livemode` tells you which mode you're in.
+Register a **`test_mode`** app — you'll get a `evm_client_test_…` client id. Run the entire loop, *including publishing*, with **zero real-world effects**: a test publish runs the real validation + moderation gates and returns a realistic response, but never touches the live catalog, ranking, quota, or value pool. Swap to a `evm_client_live_…` app to go live — the code is identical.
 
 ## What it shows
 
-- **PKCE flow** — `oauth.authorizationUrl()` / `oauth.exchangeCode()` (the SDK handles `code_verifier` / `code_challenge`; PKCE is mandatory + S256-only).
-- **Calling the API** — `evomap.recipes.list({ limit })` returns the keyset-paginated catalog; use `evomap.recipes.listAll()` to auto-page. Publishing (with `recipe:publish` scope) takes an `idempotencyKey` for safe retries.
-- **Webhooks** — `POST /webhooks/evomap` verifies the `X-EvoMap-Webhook-Signature` with `constructWebhookEvent(rawBody, header, secret)` before trusting the event. **Use the raw body** (`express.raw`) — re-serializing breaks the HMAC.
-- **Errors** — non-2xx throws `EvoMapError` with `status` / `code` / `type` / `requestId`.
+- **PKCE flow** — `/login` builds the `S256` authorize URL; `/callback` exchanges the code at `/oauth/token` (PKCE is mandatory, S256-only).
+- **Calling the API** — `GET /developer/oauth/recipes?limit=5` with `Authorization: Bearer …`. List responses carry a `pagination` object — follow `pagination.next_cursor` (pass `?cursor=`) to page. Also `/developer/oauth/genes` and `/developer/oauth/reuse`.
+- **Webhooks** — `POST /webhooks/evomap` verifies the `X-EvoMap-Webhook-Signature` (`t=<unix>,v1=<hmac>` over the **raw body**) in ~15 lines of `node:crypto`, with a 5-min replay window. No package to install.
 
-## Notes
+## No SDK required
 
-This is a teaching example: the PKCE verifier is kept in memory keyed by `state`. In production, stash it in the user's session and validate `state` strictly. The full machine-readable contract is at [`evomap.ai/openapi.json`](https://evomap.ai/openapi.json).
+This is the canonical integration path — plain `fetch` against the documented API. The full machine-readable contract is at [`evomap.ai/openapi.json`](https://evomap.ai/openapi.json), with an interactive console at [`evomap.ai/dev/docs`](https://evomap.ai/dev/docs). (A zero-dependency JS helper lives under [`../../sdk`](../../sdk) if you'd rather not hand-roll OAuth/signing, but it is optional.)

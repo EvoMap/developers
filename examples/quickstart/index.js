@@ -1,5 +1,6 @@
-// EvoMap quickstart — the full developer loop with the official @evomap/sdk:
-// OAuth 2.0 + PKCE, calling the API, and verifying webhooks. (Express, Node 18+.)
+// EvoMap quickstart — the full developer loop over the raw HTTP API, zero SDK,
+// zero deps beyond express: OAuth 2.0 + PKCE, calling the API, and verifying a
+// webhook. Copy what you need straight into your app.
 //
 //   1. npm install
 //   2. cp .env.example .env  and fill in CLIENT_ID / CLIENT_SECRET from the portal
@@ -12,84 +13,111 @@
 // production, stash it in the user's session and validate state strictly.
 
 import express from "express";
-import { OAuthClient, EvoMap, EvoMapError, constructWebhookEvent, WebhookSignatureError } from "@evomap/sdk";
+import crypto from "node:crypto";
 
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET; // omit for public/PKCE-only clients
 const BASE = process.env.EVOMAP_BASE || "https://evomap.ai";
 const REDIRECT_URI = "http://localhost:3000/callback";
-const SCOPE = ["recipe:read"]; // add recipe:write / recipe:publish to create/publish
+const SCOPE = "recipe:read"; // space-separate more, e.g. "recipe:read recipe:write"
 
-const oauth = new OAuthClient({
-  clientId: process.env.CLIENT_ID,
-  clientSecret: process.env.CLIENT_SECRET, // omit for public/PKCE-only clients
-  redirectUri: REDIRECT_URI,
-  baseUrl: BASE,
-});
-if (!process.env.CLIENT_ID) {
+if (!CLIENT_ID) {
   console.error("Set CLIENT_ID (and CLIENT_SECRET for confidential clients) — see .env.example.");
   process.exit(1);
 }
-console.log(`Mode: ${oauth.livemode ? "LIVE" : "TEST (sandbox — no real-world effects)"}`);
+const isTest = CLIENT_ID.startsWith("evm_client_test_");
+console.log(`Mode: ${isTest ? "TEST (sandbox — no real-world effects)" : "LIVE"}`);
 
 const app = express();
-const pending = new Map(); // state -> codeVerifier (demo only)
+const pending = new Map(); // state -> code_verifier (demo only)
+const b64url = (buf) => buf.toString("base64url");
 
 app.get("/", (_req, res) => {
   res.type("html").send('<h1>EvoMap quickstart</h1><a href="/login">Connect with EvoMap →</a>');
 });
 
-// 1. Send the user to consent. Stash the PKCE verifier keyed by state.
+// 1. PKCE: build the authorize URL, stash the verifier keyed by state.
 app.get("/login", (_req, res) => {
-  const { url, codeVerifier, state } = oauth.authorizationUrl({ scope: SCOPE });
-  pending.set(state, codeVerifier);
+  const verifier = b64url(crypto.randomBytes(32));
+  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
+  const state = b64url(crypto.randomBytes(16));
+  pending.set(state, verifier);
+  const url =
+    `${BASE}/oauth/authorize?` +
+    new URLSearchParams({
+      response_type: "code",
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      scope: SCOPE,
+      code_challenge: challenge,
+      code_challenge_method: "S256", // S256 is mandatory; plain is rejected
+      state,
+    });
   res.redirect(url);
 });
 
-// 2. Exchange the code, then 3. call the API on the user's behalf.
 app.get("/callback", async (req, res) => {
   const { code, state } = req.query;
-  const codeVerifier = pending.get(state);
-  if (!code || !codeVerifier) return res.status(400).send("Missing code or unknown state.");
+  const verifier = pending.get(state);
+  if (!code || !verifier) return res.status(400).send("Missing code or unknown state.");
   pending.delete(state);
 
-  try {
-    const tokens = await oauth.exchangeCode({ code: String(code), codeVerifier });
-    const evomap = new EvoMap({ accessToken: tokens.accessToken, baseUrl: BASE });
+  // 2. Exchange the code for tokens (urlencoded body, per OAuth2).
+  const tokenRes = await fetch(`${BASE}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: String(code),
+      client_id: CLIENT_ID,
+      ...(CLIENT_SECRET ? { client_secret: CLIENT_SECRET } : {}),
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+    }),
+  });
+  const tokens = await tokenRes.json();
+  if (!tokens.access_token) return res.status(400).json(tokens);
 
-    // List the promoted recipe catalog (keyset-paginated — the SDK can auto-page).
-    const { recipes, pagination } = await evomap.recipes.list({ limit: 5 });
+  // 3. Call the API on the user's behalf. Lists carry a `pagination` object —
+  //    follow pagination.next_cursor (pass ?cursor=) to page.
+  const apiRes = await fetch(`${BASE}/developer/oauth/recipes?limit=5`, {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  });
+  const recipes = await apiRes.json();
 
-    res.json({
-      livemode: oauth.livemode,
-      scope: tokens.scope,
-      recipes,
-      pagination,
-      // To publish (needs recipe:publish scope), idempotency-keyed for safe retries:
-      //   await evomap.recipes.publish({ title, steps }, { idempotencyKey: "..." });
-    });
-  } catch (err) {
-    if (err instanceof EvoMapError) {
-      return res.status(err.status).json({ error: err.code, type: err.type, request_id: err.requestId });
-    }
-    throw err;
-  }
+  res.json({
+    tokens: { ...tokens, access_token: "***", refresh_token: tokens.refresh_token ? "***" : undefined },
+    recipes,
+  });
 });
 
-// 4. Receive webhooks. Register the endpoint via the portal/API and copy the
-//    whsec_… into EVOMAP_WEBHOOK_SECRET. ALWAYS verify with the raw body.
+// 4. Receive webhooks. Register the endpoint via the portal/API, copy the whsec_…
+//    into EVOMAP_WEBHOOK_SECRET, and ALWAYS verify against the RAW body.
 app.post("/webhooks/evomap", express.raw({ type: "application/json" }), (req, res) => {
-  let event;
-  try {
-    event = constructWebhookEvent(
-      req.body, // Buffer — the exact raw bytes
-      req.get("X-EvoMap-Webhook-Signature"),
-      process.env.EVOMAP_WEBHOOK_SECRET,
-    );
-  } catch (err) {
-    if (err instanceof WebhookSignatureError) return res.status(400).send(err.reason);
-    throw err;
+  if (!verifyWebhook(req.body, req.get("X-EvoMap-Webhook-Signature"), process.env.EVOMAP_WEBHOOK_SECRET)) {
+    return res.status(400).send("bad signature");
   }
+  const event = JSON.parse(req.body.toString("utf8"));
   console.log(`webhook: ${event.type} (livemode=${event.livemode})`, event.data);
   res.sendStatus(200);
 });
+
+// Verify the `t=<unix>,v1=<hmac>` signature: HMAC-SHA256 over `${t}.${rawBody}`,
+// constant-time compared, rejecting events older than 5 min (replay guard).
+// ~15 lines — no SDK needed.
+function verifyWebhook(rawBody, header, secret, toleranceSec = 300) {
+  if (!secret || !header) return false;
+  const parts = Object.fromEntries(String(header).split(",").map((p) => {
+    const i = p.indexOf("=");
+    return i > 0 ? [p.slice(0, i).trim(), p.slice(i + 1).trim()] : [p, ""];
+  }));
+  if (!parts.t || !parts.v1) return false;
+  const body = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : String(rawBody);
+  const expected = crypto.createHmac("sha256", secret).update(`${parts.t}.${body}`).digest("hex");
+  const a = Buffer.from(parts.v1, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  return Math.floor(Date.now() / 1000) - Number(parts.t) <= toleranceSec;
+}
 
 app.listen(3000, () => console.log("Listening on http://localhost:3000"));
