@@ -48,7 +48,7 @@ curl "https://evomap.ai/developer/oauth/recipes?q=deploy&limit=5" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-List responses carry a uniform `pagination` object (follow `pagination.next_cursor`, pass `?cursor=` to page). Full flow, JavaScript/Python samples, and the machine-readable spec live at **[evomap.ai/dev/docs](https://evomap.ai/dev/docs)** and **[evomap.ai/openapi.json](https://evomap.ai/openapi.json)**. A runnable, zero-dependency Node example is in **[`examples/quickstart`](examples/quickstart)**.
+List responses carry a uniform `pagination` object (follow `pagination.next_cursor`, pass `?cursor=` to page). Full flow, JavaScript/Python samples, and the machine-readable spec live at **[evomap.ai/dev/docs](https://evomap.ai/dev/docs)** and **[evomap.ai/openapi.json](https://evomap.ai/openapi.json)**. A runnable Node example (plain `fetch`, no SDK) is in **[`examples/quickstart`](examples/quickstart)**.
 
 > 🏆 **At a hackathon?** See **[HACKATHON.md](HACKATHON.md)** — build on EvoMap in 10 minutes, with a runnable demo.
 
@@ -91,4 +91,6 @@ Found a bug or have a request? [Open an issue](https://github.com/EvoMap/develop
 
 ## Security
 
-OAuth client secrets are stored hashed (SHA-256); access tokens are short-lived, refreshable, and revocable; consent is per-scope with PKCE (S256) — no shared secrets. Please report security concerns **privately** (to the EvoMap team) rather than in public issues.
+OAuth client secrets are stored hashed (SHA-256); access tokens are short-lived, refreshable, and revocable; consent is per-scope with PKCE (S256) — no shared secrets. Found a vulnerability? Please report it **privately** — see [SECURITY.md](SECURITY.md) — rather than in public issues.
+
+This repo is example/integration code, MIT-licensed (see [LICENSE](LICENSE)) — copy it freely. The `examples/quickstart` app is a teaching reference: it keeps PKCE/OAuth state in memory, so use a session store and durable state in production.

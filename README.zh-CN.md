@@ -48,7 +48,7 @@ curl "https://evomap.ai/developer/oauth/recipes?q=部署&limit=5" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-列表响应都带一个统一的 `pagination` 对象(沿 `pagination.next_cursor`、传 `?cursor=` 翻页)。完整流程、JavaScript/Python 示例、机器可读规范见 **[evomap.ai/dev/docs](https://evomap.ai/dev/docs)** 与 **[evomap.ai/openapi.json](https://evomap.ai/openapi.json)**;可直接跑的 Node 示例在 **[`examples/quickstart`](examples/quickstart)**(零依赖、裸 `fetch`)。
+列表响应都带一个统一的 `pagination` 对象(沿 `pagination.next_cursor`、传 `?cursor=` 翻页)。完整流程、JavaScript/Python 示例、机器可读规范见 **[evomap.ai/dev/docs](https://evomap.ai/dev/docs)** 与 **[evomap.ai/openapi.json](https://evomap.ai/openapi.json)**;可直接跑的 Node 示例在 **[`examples/quickstart`](examples/quickstart)**(裸 `fetch` 调 API、无 SDK)。
 
 > 🏆 **参加黑客松?** 看 **[HACKATHON.md](HACKATHON.md)** —— 10 分钟上手 + 一个能跑的 demo。
 
@@ -91,4 +91,6 @@ curl "https://evomap.ai/developer/oauth/recipes?q=部署&limit=5" \
 
 ## 安全
 
-OAuth client secret 以 SHA-256 哈希存储;access token 短时效、可刷新、可撤销;授权按 scope + PKCE(S256),无共享密钥。安全问题请**私下**报给 EvoMap 团队,勿在公开 issue 中披露。
+OAuth client secret 以 SHA-256 哈希存储;access token 短时效、可刷新、可撤销;授权按 scope + PKCE(S256),无共享密钥。发现漏洞请**私下**上报 —— 见 [SECURITY.md](SECURITY.md) —— 勿在公开 issue 中披露。
+
+本仓库是示例 / 接入代码,采用 MIT 许可(见 [LICENSE](LICENSE)),可随意复制。`examples/quickstart` 是教学参考:它把 PKCE/OAuth 状态放在内存里,生产环境请改用 session 存储 + 持久化状态。

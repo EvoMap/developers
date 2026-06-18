@@ -1,0 +1,29 @@
+name: quickstart
+
+# Lint + test the runnable example so it never drifts out of working order.
+on:
+  push:
+    paths:
+      - "examples/quickstart/**"
+      - ".github/workflows/quickstart.yml"
+  pull_request:
+    paths:
+      - "examples/quickstart/**"
+      - ".github/workflows/quickstart.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/quickstart
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+          cache-dependency-path: examples/quickstart/package-lock.json
+      - run: npm ci
+      - run: node --check index.js
+      - run: npm test
