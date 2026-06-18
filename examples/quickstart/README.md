@@ -26,4 +26,4 @@ Register a **`test_mode`** app — you'll get a `evm_client_test_…` client id.
 
 ## No SDK required
 
-This is the canonical integration path — plain `fetch` against the documented API. The full machine-readable contract is at [`evomap.ai/openapi.json`](https://evomap.ai/openapi.json), with an interactive console at [`evomap.ai/dev/docs`](https://evomap.ai/dev/docs). (A zero-dependency JS helper lives under [`../../sdk`](../../sdk) if you'd rather not hand-roll OAuth/signing, but it is optional.)
+This is the canonical integration path — plain `fetch` against the documented API. The full machine-readable contract is at [`evomap.ai/openapi.json`](https://evomap.ai/openapi.json), with an interactive console at [`evomap.ai/dev/docs`](https://evomap.ai/dev/docs).
