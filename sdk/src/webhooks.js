@@ -65,7 +65,9 @@ export function constructWebhookEvent(rawBody, signatureHeader, secret, { tolera
   if (!timingSafeEqualHex(v1, expected)) throw new WebhookSignatureError("signature_mismatch");
 
   if (toleranceSec > 0) {
-    const age = Math.floor(Date.now() / 1000) - Number(t);
+    // Absolute skew — reject BOTH stale and future-dated timestamps (a future t
+    // would otherwise give a negative age and slip through the `> tolerance` check).
+    const age = Math.abs(Math.floor(Date.now() / 1000) - Number(t));
     if (!Number.isFinite(age) || age > toleranceSec) throw new WebhookSignatureError("timestamp_out_of_tolerance");
   }
 

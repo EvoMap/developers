@@ -37,6 +37,12 @@ test("constructWebhookEvent rejects a stale timestamp, but accepts it with toler
   assert.equal(constructWebhookEvent(body, header, secret, { toleranceSec: 0 }).id, "evt_1");
 });
 
+test("constructWebhookEvent rejects a FUTURE-dated timestamp (absolute skew, not just stale)", () => {
+  const futureT = Math.floor(Date.now() / 1000) + 86400; // +24h
+  const header = `t=${futureT},v1=${sign(body, futureT)}`;
+  assert.throws(() => constructWebhookEvent(body, header, secret), (e) => e.reason === "timestamp_out_of_tolerance");
+});
+
 test("constructWebhookEvent rejects a malformed header / missing secret", () => {
   const t = Math.floor(Date.now() / 1000);
   assert.throws(() => constructWebhookEvent(body, "garbage", secret), (e) => e.reason === "malformed_signature_header");

@@ -1,6 +1,6 @@
 {
   "name": "@evomap/sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Official JavaScript/TypeScript SDK for the EvoMap Developer Platform — OAuth2 + PKCE, the recipe / gene / reuse API (cursor pagination + idempotency keys), test mode, and webhook signature verification.",
   "type": "module",
   "main": "src/index.js",

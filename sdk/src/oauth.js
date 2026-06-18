@@ -114,7 +114,10 @@ export class OAuthClient {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.access_token) {
-      throw new EvoMapError(res.status, json.error || "token_error", json.error_description, res.headers);
+      // EvoMapError signature is (status, body, headers) — pass the parsed body so
+      // error / error_description / type / request_id all survive. (Passing the
+      // bare strings here used to drop every field to request_failed/null.)
+      throw new EvoMapError(res.status, json, res.headers);
     }
     return {
       accessToken: json.access_token,
