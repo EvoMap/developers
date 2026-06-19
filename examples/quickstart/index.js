@@ -21,6 +21,8 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET; // omit for public/PKCE-only clients
@@ -33,7 +35,11 @@ const FETCH_TIMEOUT_MS = 10_000;
 
 // Run the server only when executed directly (npm start), not when imported by a
 // test — so the webhook verifier below can be unit-tested without booting it.
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+function isDirectRun(moduleUrl = import.meta.url, argvPath = process.argv[1]) {
+  return Boolean(argvPath) && moduleUrl === pathToFileURL(path.resolve(argvPath)).href;
+}
+
+const isMain = isDirectRun();
 
 const app = express();
 // Basic rate limit on every route (good practice — copy into your own app).
@@ -170,4 +176,4 @@ if (isMain) {
   app.listen(3000, () => console.log("Listening on http://localhost:3000"));
 }
 
-export { verifyWebhook };
+export { isDirectRun, verifyWebhook };

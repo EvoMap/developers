@@ -4,7 +4,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { verifyWebhook } from "../index.js";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { isDirectRun, verifyWebhook } from "../index.js";
 
 const SECRET = "whsec_test_secret";
 
@@ -51,4 +53,11 @@ test("rejects a missing or malformed header", () => {
 test("rejects when the secret is absent", () => {
   const { header, body } = sign('{"type":"recipe.created"}');
   assert.equal(verifyWebhook(Buffer.from(body), header, undefined), false);
+});
+
+test("detects direct execution from URL-escaped filesystem paths", () => {
+  const entry = path.join(process.cwd(), "路径 with spaces", "index.js");
+  assert.equal(isDirectRun(pathToFileURL(entry).href, entry), true);
+  assert.equal(isDirectRun(pathToFileURL(entry).href, undefined), false);
+  assert.equal(isDirectRun(pathToFileURL(entry).href, path.join(process.cwd(), "other.js")), false);
 });
